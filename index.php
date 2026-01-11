@@ -40,7 +40,17 @@ function rpc_call($method, $params = [])
     ]);
 
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, "http://{$config['rpc_host']}:{$config['rpc_port']}");
+
+    // Check if host already implies a protocol/URL
+    if (strpos($config['rpc_host'], 'http://') === 0 || strpos($config['rpc_host'], 'https://') === 0) {
+        // Use provided full URL (e.g. Chainstack)
+        // If port is in the URL, rpc_port is ignored or should be empty or matching
+        // We append port only if it's not default/implied or not in string (simplified: just use host if https)
+        curl_setopt($ch, CURLOPT_URL, $config['rpc_host']);
+    } else {
+        // Default local fallback
+        curl_setopt($ch, CURLOPT_URL, "http://{$config['rpc_host']}:{$config['rpc_port']}");
+    }
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_BINARYTRANSFER, true);
     curl_setopt($ch, CURLOPT_USERPWD, "{$config['rpc_user']}:{$config['rpc_password']}");
@@ -164,7 +174,8 @@ function process_batch_update($rows)
 
     // 1. Try RPC Batch
     $descriptors = array_map(function ($a) {
-        return "addr($a)"; }, $addresses);
+        return "addr($a)";
+    }, $addresses);
     $rpc_res = rpc_call('scantxoutset', ['start', $descriptors]);
 
     if (isset($rpc_res['result']['unspents'])) {
@@ -402,7 +413,20 @@ if (isset($_GET['update'])) {
 // Fetch Stats & Addresses
 $blockchain_info = rpc_call('getblockchaininfo');
 $stats = $pdo->query("SELECT COUNT(*) as count, SUM(balance) as total FROM addresses")->fetch(PDO::FETCH_ASSOC);
-$addresses = $pdo->query("SELECT * FROM addresses ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+
+// Sorting
+$sort = isset($_GET['sort']) ? $_GET['sort'] : 'label'; // Default to label
+$dir = isset($_GET['dir']) ? $_GET['dir'] : 'ASC';
+$allowed_sort = ['label', 'address', 'balance', 'last_updated'];
+$allowed_dir = ['ASC', 'DESC'];
+
+if (!in_array($sort, $allowed_sort)) $sort = 'label';
+if (!in_array($dir, $allowed_dir)) $dir = 'ASC';
+
+// Toggle direction for UI
+$next_dir = ($dir === 'ASC') ? 'DESC' : 'ASC';
+
+$addresses = $pdo->query("SELECT * FROM addresses ORDER BY $sort $dir")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -621,18 +645,25 @@ $addresses = $pdo->query("SELECT * FROM addresses ORDER BY created_at DESC")->fe
         </div>
 
         <div class="card">
-            <h3>Add Addresses</h3>
-            <div style="margin-bottom: 1rem; font-size: 0.9rem; color: #666;">
-                Format per line: <code>Address</code> or <code>Label,Address</code>
+            <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;"
+                onclick="toggleAddForm()">
+                <h3 style="margin:0;">Add Addresses</h3>
+                <span id="toggleIcon" style="font-size: 1.2rem; color: #999;">+</span>
             </div>
-            <form method="POST">
-                <div class="form-group">
-                    <textarea name="address_input"
-                        placeholder="Exchange,1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa&#10;Savings,1JTK7s9YVYywfm5XUH7RNhHJH1LshCaRFR&#10;1PWo3JeB9jrGwfHDNpdGK54CRas7fsBzXU"
-                        required style="min-height: 120px;"></textarea>
+
+            <div id="addAddressForm" style="display: none; margin-top: 1.5rem;">
+                <div style="margin-bottom: 1rem; font-size: 0.9rem; color: #666;">
+                    Format per line: <code>Address</code> or <code>Label,Address</code>
                 </div>
-                <button type="submit" name="add_address" class="btn btn-primary">Add Addresses</button>
-            </form>
+                <form method="POST">
+                    <div class="form-group">
+                        <textarea name="address_input"
+                            placeholder="Exchange,1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa&#10;Savings,1JTK7s9YVYywfm5XUH7RNhHJH1LshCaRFR&#10;1PWo3JeB9jrGwfHDNpdGK54CRas7fsBzXU"
+                            required style="min-height: 120px;"></textarea>
+                    </div>
+                    <button type="submit" name="add_address" class="btn btn-primary">Add Addresses</button>
+                </form>
+            </div>
         </div>
 
         <div class="card">
@@ -640,10 +671,10 @@ $addresses = $pdo->query("SELECT * FROM addresses ORDER BY created_at DESC")->fe
             <table>
                 <thead>
                     <tr>
-                        <th>Label</th>
-                        <th>Address</th>
-                        <th>Balance (BTC)</th>
-                        <th>Last Updated</th>
+                        <th><a href="?sort=label&dir=<?php echo ($sort === 'label') ? $next_dir : 'ASC'; ?>">Label <?php if($sort === 'label') echo ($dir === 'ASC' ? '&#9650;' : '&#9660;'); ?></a></th>
+                        <th><a href="?sort=address&dir=<?php echo ($sort === 'address') ? $next_dir : 'ASC'; ?>">Address <?php if($sort === 'address') echo ($dir === 'ASC' ? '&#9650;' : '&#9660;'); ?></a></th>
+                        <th><a href="?sort=balance&dir=<?php echo ($sort === 'balance') ? $next_dir : 'DESC'; ?>">Balance (BTC) <?php if($sort === 'balance') echo ($dir === 'ASC' ? '&#9650;' : '&#9660;'); ?></a></th>
+                        <th><a href="?sort=last_updated&dir=<?php echo ($sort === 'last_updated') ? $next_dir : 'DESC'; ?>">Last Updated <?php if($sort === 'last_updated') echo ($dir === 'ASC' ? '&#9650;' : '&#9660;'); ?></a></th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -676,6 +707,19 @@ $addresses = $pdo->query("SELECT * FROM addresses ORDER BY created_at DESC")->fe
             <code><?php echo (isset($_SERVER['HTTPS']) ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[PHP_SELF]"; ?>?action=cron</code>
         </div>
     </div>
+    <script>
+        function toggleAddForm() {
+            var form = document.getElementById('addAddressForm');
+            var icon = document.getElementById('toggleIcon');
+            if (form.style.display === 'none') {
+                form.style.display = 'block';
+                icon.innerHTML = '&minus;';
+            } else {
+                form.style.display = 'none';
+                icon.innerHTML = '+';
+            }
+        }
+    </script>
 </body>
 
 </html>

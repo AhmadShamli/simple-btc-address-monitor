@@ -5,8 +5,17 @@
 
 return [
     // Bitcoin RPC Settings
+    'rpc_type' => 'local', // 'local' or 'remote'
+
+    // Local RPC Settings
     'rpc_host' => '127.0.0.1',
     'rpc_port' => 8332,
+
+    // Remote RPC Settings (e.g., Chainstack)
+    // Format: https://USER:PASSWORD@endpoint.chainstacklabs.com
+    'rpc_url' => '',
+
+    // Shared Credentials (for local, or if remote URL doesn't include them)
     'rpc_user' => 'your_rpc_username',
     'rpc_password' => 'your_rpc_password',
 
